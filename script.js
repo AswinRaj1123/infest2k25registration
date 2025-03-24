@@ -161,9 +161,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Handle different payment methods
         if (paymentMode === "online") {
+            alert("ONline payments are closed for now. Please select offline payment mode.");
+
             // Create order ID first
             
-            window.location.href = "https://rzp.io/rzp/qE5ylHJ";
          
             // if (orderId) {
             //     // Add Razorpay script dynamically if not already loaded
