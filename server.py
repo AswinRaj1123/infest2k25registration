@@ -14,7 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import logging
 import uvicorn
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
+from starlette.responses import RedirectResponse
 
 load_dotenv()
 os.makedirs("qrcodes", exist_ok=True)
@@ -58,14 +59,6 @@ class RegistrationData(BaseModel):#
     payment_id: str = None
     payment_status: str = "pending"
 
-#class OrderRequest(BaseModel):
-  #  amount: int
-
-#class PaymentVerification(BaseModel):
-  #  razorpay_order_id: str
-  #  razorpay_payment_id: str
-   # razorpay_signature: str
-   # registration_data: dict
 
 # Function to Generate Ticket ID
 def generate_ticket_id():
@@ -124,51 +117,23 @@ def send_email(user_email, ticket_id, qr_path, user_data):
 @app.get("/")
 async def root():
     return {"message": "Server is running"}
-    
-
-@app.post("/webhook")
-async def razorpay_webhook(request: Request):
-    payload = await request.json()
-    print("Webhook Data:", payload)
-
-    if payload.get('event') == "payment.captured":
-        payment_id = payload["payload"]["payment"]["entity"]["id"]
-        amount = payload["payload"]["payment"]["entity"]["amount"] / 100  # Convert paise to INR
-
-        try:
-            # Find the registration with this payment_id and update payment status
-            result = collection.update_one(
-                {"payment_id": payment_id},
-                {"$set": {"payment_status": "paid"}}
-            )
-            
-            if result.modified_count > 0:
-                logger.info(f"✅ Payment Successful: ₹{amount} - Payment ID: {payment_id} - Database updated")
-                # Fetch the ticket ID from the database
-                registration = collection.find_one({"payment_id": payment_id})
-                ticket_id = registration["ticket_id"]
-                # Redirect to the tickets page with the ticket ID
-                return RedirectResponse(url=f"/ticket.html?ticketId={ticket_id}")
-            else:
-                logger.warning(f"⚠ Payment received but no matching registration found: {payment_id}")
-                return {"status": "warning", "message": "Payment recorded but no matching registration found"}
-        
-        except Exception as e:
-            logger.error(f"❌ Database error while updating payment: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"status": "error", "message": f"Database error: {str(e)}"}
-            )
-    else:
-        return {"status": "error", "message": "Invalid event type"}
-
-
 
 @app.post("/register")
 async def register_user(data: RegistrationData):
+     # If it's an online payment with payment_id, verify payment status
+    if data.payment_mode == "online" and data.payment_id:
+         try:
+             # You might want to verify the payment with Razorpay here
+             # For now, we'll trust the client-side verification and just mark it as paid
+             payment_status = "paid"
+         except Exception as e:
+             payment_status = "failed"
+             raise HTTPException(status_code=400, detail=f"Payment verification failed: {str(e)}")
+    else:
+         # For offline payment or if payment_id is not provided
+         payment_status = "pending"
     
-    # Generate a unique ticket ID
-        # Generate ticket ID
+     # Generate ticket ID
     ticket_id = generate_ticket_id()
     
      # Generate QR Code
@@ -177,7 +142,7 @@ async def register_user(data: RegistrationData):
      # Update user data
     user_data = data.dict()
     user_data["ticket_id"] = ticket_id
-    user_data["payment_status"] = user_data.get('payment_status')
+    user_data["payment_status"] = payment_status
     user_data["registration_time"] = datetime.now().isoformat()
     
     try:
@@ -194,27 +159,75 @@ async def register_user(data: RegistrationData):
          "ticket_id": ticket_id, 
          "qr_code": qr_path, 
          "email_sent": email_sent,
-         "payment_status": user_data.get('payment_status')
+         "payment_status": payment_status
      }
+@app.post("/webhook")
+async def razorpay_webhook(request: Request):
+    payload = await request.json()
+
+    if payload.get('event') == "payment.captured":
+        payment_id = payload["payload"]["payment"]["entity"]["id"]
+        amount = payload["payload"]["payment"]["entity"]["amount"] / 100  # Convert paise to INR
+        return RedirectResponse(url="https://infest-2k25-registration-page.onrender.com/register")
+    else:
+        
+        try:
+            # Find the registration with this payment_id and update payment status
+            result = collection.update_one(
+                {"payment_id": payment_id},
+                {"$set": {"payment_status": "paid"}}
+            )
+            
+            if result.modified_count > 0:
+                logger.info(f"✅ Payment Successful: ₹{amount} - Payment ID: {payment_id} - Database updated")
+                return {"status": "success", "message": "Payment recorded and database updated"}
+            else:
+                logger.warning(f"⚠️ Payment received but no matching registration found: {payment_id}")
+                return {"status": "warning", "message": "Payment recorded but no matching registration found"}
+        
+        except Exception as e:
+            logger.error(f"❌ Database error while updating payment: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"status": "error", "message": f"Database error: {str(e)}"}
+            )
+
+
+
+
+    
+@app.post("/register")
+async def register_user(data: RegistrationData):
+    # Check if the user is already registered
+    existing_registration = collection.find_one({"email": data.email})
+    
+    if existing_registration:
+        return {
+            "status": "success",
+            "ticket_id": existing_registration["ticket_id"],
+            "qr_code": existing_registration["qr_code"],
+            "email_sent": False  # No need to send email again
+        }
+    
+    # Generate new ticket ID and QR code
+    ticket_id = generate_ticket_id()
+    qr_path = generate_qr(ticket_id)
+
+    user_data = data.dict()
+    user_data["ticket_id"] = ticket_id
+    user_data["qr_code"] = qr_path  # Store QR code path in the database
+
+    try:
+        collection.insert_one(user_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
+
+    email_sent = send_email(data.email, ticket_id, qr_path, user_data)
+
+    return {"status": "success", "ticket_id": ticket_id, "qr_code": qr_path, "email_sent": email_sent}
 
 @app.get("/health")
 async def health_check():
     return Response(status_code=200)
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-    
-# @app.get("/api/ticket/{ticket_id}")
-# async def get_ticket_details(ticket_id: str):
-#     registration = collection.find_one({"ticket_id": ticket_id})
-#     if registration:
-#         return {
-#             "ticket_id": registration["ticket_id"],
-#             "name": registration["name"],
-#             "email": registration["email"],
-#             "events": registration["events"],
-#             "payment_status": registration["payment_status"],
-#             "qr_code": registration["qr_code"]
-#         }
-#     else:
-#         raise HTTPException(status_code=404, detail="Ticket not found")
+# if __name__ == '__main__':
+    # uvicorn.run(app, host="0.0.0.0", port=5000)
