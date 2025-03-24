@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pymongo
+python-dotenv
+razorpay
+qrcode
+setuptools
+pillow
+flask
