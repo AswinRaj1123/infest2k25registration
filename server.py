@@ -168,7 +168,7 @@ async def razorpay_webhook(request: Request):
     if payload.get('event') == "payment.captured":
         payment_id = payload["payload"]["payment"]["entity"]["id"]
         amount = payload["payload"]["payment"]["entity"]["amount"] / 100  # Convert paise to INR
-        return RedirectResponse(url="https://infest-2k25-registration-page.onrender.com/register")
+        return RedirectResponse(url="https://infest2k25registration.onrender.com/register")
     else:
         
         try:

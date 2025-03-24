@@ -75,7 +75,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         try {
-            const response = await fetch("https://infest-2k25-registration-page.onrender.com/register", {
+            const response = await fetch("https://infest2k25registration.onrender.com/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(userData)
