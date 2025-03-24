@@ -75,7 +75,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         try {
-            const response = await fetch("http://000.000.000:8080/register", {
+            const response = await fetch("https://infest2k25registration.onrender.com/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
 
