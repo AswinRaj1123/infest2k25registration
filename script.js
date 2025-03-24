@@ -161,7 +161,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Handle different payment methods
         if (paymentMode === "online") {
-            alert("ONline payments are closed for now. Please select offline payment mode.");
+            alert("We are currently unable to process online payments. Please choose the 'Pay at Venue' option for payment.");
 
             // Create order ID first
             
